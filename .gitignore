@@ -1,0 +1,22 @@
+# Rust / Tauri
+/target/
+src-tauri/target/
+src-tauri/gen/
+
+# Frontend
+node_modules/
+/dist/
+/build/
+.svelte-kit/
+
+# Python (research scripts)
+__pycache__/
+
+# Research captures contain personal photos; keep them local
+research/captures/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

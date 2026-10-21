@@ -1,0 +1,188 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { VideoOff, TriangleAlert, Play } from "@lucide/svelte";
+  import { api } from "./api";
+  import { app } from "./store.svelte";
+  import StaticNoise from "./StaticNoise.svelte";
+
+  let canvas: HTMLCanvasElement;
+  let hasFrame = $state(false);
+  let flashing = $state(false);
+
+  // Latest frame only: one decoding, at most one waiting; a newer frame replaces the waiting one.
+  let decoding = false;
+  let waiting: ArrayBuffer | null = null;
+  let frames = 0;
+
+  async function decode(buf: ArrayBuffer) {
+    decoding = true;
+    try {
+      const bitmap = await createImageBitmap(new Blob([buf], { type: "image/jpeg" }));
+      if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+      }
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      if (app.live) hasFrame = true;
+      frames++;
+    } catch {
+      // A corrupt frame (e.g. cut off by an unplug); skip it.
+    } finally {
+      void api.previewAck();
+      decoding = false;
+    }
+    const next = waiting;
+    waiting = null;
+    if (next) void decode(next);
+  }
+
+  function onFrame(buf: ArrayBuffer) {
+    if (decoding) {
+      if (waiting) void api.previewAck(); // the replaced frame is done with
+      waiting = buf;
+    } else {
+      void decode(buf);
+    }
+  }
+
+  // Only live states show the picture; connecting/paused show black, the rest show static.
+  $effect(() => {
+    if (!app.live) hasFrame = false;
+  });
+
+  $effect(() => {
+    if (app.flash === 0) return;
+    flashing = true;
+    const t = setTimeout(() => (flashing = false), 140);
+    return () => clearTimeout(t);
+  });
+
+  onMount(() => {
+    void api.openPreview(onFrame);
+    app.thumbnailer = () => {
+      if (!hasFrame || !canvas.width) return null;
+      const t = document.createElement("canvas");
+      t.height = 96;
+      t.width = Math.round((canvas.width / canvas.height) * 96);
+      t.getContext("2d")?.drawImage(canvas, 0, 0, t.width, t.height);
+      return t.toDataURL("image/jpeg", 0.8);
+    };
+    const fpsTimer = setInterval(() => {
+      app.displayFps = frames;
+      frames = 0;
+    }, 1000);
+    return () => clearInterval(fpsTimer);
+  });
+
+  const offline = $derived(app.state === "noCamera" || app.state === "busy" || app.state === "error");
+  const offlineText = $derived(
+    app.state === "busy"
+      ? "Camera in use by another app"
+      : app.state === "error"
+        ? (app.message ?? "Camera error")
+        : "Camera disconnected",
+  );
+</script>
+
+<div class="viewport">
+  <canvas bind:this={canvas} class:hidden={!hasFrame}></canvas>
+
+  {#if offline}
+    <div class="offline">
+      <StaticNoise />
+      <div class="offline-content">
+        {#if app.state === "error"}
+          <TriangleAlert size={96} strokeWidth={1.5} />
+        {:else}
+          <VideoOff size={96} strokeWidth={1.5} />
+        {/if}
+        <p>{offlineText}</p>
+      </div>
+    </div>
+  {:else if app.state === "paused"}
+    <div class="paused">
+      <button class="resume" onclick={() => app.setPaused(false)} title="Resume preview">
+        <Play size={40} />
+      </button>
+      <p>{app.manualPause ? "Preview paused" : "Paused while the window is hidden"}</p>
+    </div>
+  {/if}
+
+  {#if flashing}
+    <div class="flash"></div>
+  {/if}
+</div>
+
+<style>
+  .viewport {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    overflow: hidden;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  canvas.hidden {
+    visibility: hidden;
+  }
+  .offline,
+  .paused {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+  .offline-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    color: #fff;
+    filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.8));
+  }
+  .offline-content p,
+  .paused p {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 500;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
+    max-width: 60ch;
+    text-align: center;
+  }
+  .paused {
+    align-content: center;
+    gap: 16px;
+    color: rgba(255, 255, 255, 0.75);
+  }
+  .resume {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    display: grid;
+    place-items: center;
+  }
+  .resume:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  .flash {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0.85;
+    animation: flash 140ms ease-out forwards;
+    pointer-events: none;
+  }
+  @keyframes flash {
+    to {
+      opacity: 0;
+    }
+  }
+</style>

@@ -1,0 +1,33 @@
+[package]
+name = "camera-settings"
+description = "Live preview, safe camera settings and test captures for the Logitech BRIO"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "camera-settings"
+
+[lib]
+name = "camera_settings_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+camera-control.workspace = true
+nix.workspace = true
+libc.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+serde_json = "1"
+toml = "1"
+dirs = "7"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,0 +1,15 @@
+[package]
+name = "camera-control"
+description = "Discovery, hotplug and allowlisted V4L2 / UVC extension-unit controls for the Logitech BRIO"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nix.workspace = true
+libc.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+udev.workspace = true
