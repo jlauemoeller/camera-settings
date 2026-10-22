@@ -52,6 +52,8 @@ export interface StatePayload {
   device: CameraInfo | null;
   audioAvailable: boolean;
   manualPause: boolean;
+  /** Controls can be changed now, also while another app has the stream (busy) or when paused. */
+  controlsAvailable: boolean;
 }
 
 export interface ModesPayload {
@@ -90,6 +92,15 @@ export interface Stats {
   bitrate: number | null;
 }
 
+/** A setting where the camera (in use by another app) differs from the app's settings. */
+export interface SettingDiff {
+  id: string;
+  label: string;
+  /** null: decided automatically (its auto mode is on). */
+  camera: number | null;
+  app: number | null;
+}
+
 export interface Snapshot extends StatePayload {
   modes: ModesPayload;
   controls: Control[];
@@ -98,6 +109,7 @@ export interface Snapshot extends StatePayload {
   recording: RecordingPayload | null;
   /** Started with `--debug`: keep the webview's context menu (web inspector). */
   debug: boolean;
+  conflict: SettingDiff[] | null;
 }
 
 /** Error the backend returns for writes to a camera that just vanished; the UI ignores it. */
@@ -109,6 +121,7 @@ export const api = {
   setControl: (id: string, value: number) => invoke<void>("set_control", { id, value }),
   resetControl: (id: string) => invoke<void>("reset_control", { id }),
   resetAll: () => invoke<void>("reset_all"),
+  resolveSettingsConflict: (adopt: boolean) => invoke<void>("resolve_settings_conflict", { adopt }),
   captureStill: () => invoke<void>("capture_still"),
   startRecording: (audio: boolean, quality: VideoQuality) =>
     invoke<void>("start_recording", { options: { audio, quality } }),
@@ -136,6 +149,7 @@ export interface Events {
   "capture-saved": CaptureSaved;
   stats: Stats;
   error: { message: string };
+  "settings-conflict": { differences: SettingDiff[] | null };
 }
 
 export function on<K extends keyof Events>(event: K, handler: (payload: Events[K]) => void): Promise<UnlistenFn> {

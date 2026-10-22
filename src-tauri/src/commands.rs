@@ -80,6 +80,13 @@ pub async fn reset_all(state: State<'_, AppState>) -> CmdResult {
     blocking(move || c.call(Duration::from_secs(3), |reply| controls::Msg::ResetAll { reply })).await
 }
 
+/// Answer the "camera in use with different settings" question.
+#[tauri::command]
+pub async fn resolve_settings_conflict(state: State<'_, AppState>, adopt: bool) -> CmdResult {
+    let c = state.controls.clone();
+    blocking(move || c.call(Duration::from_secs(3), |reply| controls::Msg::Resolve { adopt, reply })).await
+}
+
 #[tauri::command]
 pub async fn capture_still(state: State<'_, AppState>) -> CmdResult {
     let session = state.session.clone();

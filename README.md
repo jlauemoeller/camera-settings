@@ -1,10 +1,27 @@
 # Camera Settings
 
-Linux desktop app (Tauri 2 + Rust + Svelte 5) for the Logitech BRIO: live preview, the safe camera
-controls, field of view, stream modes, and test captures. It keeps working when the camera is unplugged at any moment.
-See [SPEC.md](SPEC.md) for the specification and [research/FINDINGS.md](research/FINDINGS.md) for what the device exposes.
+Linux desktop app (Tauri 2 + Rust + Svelte 5) for the Logitech BRIO: live preview, access to the safe
+documented camera controls, including field of view, stream modes, white ballance, etc. The app also
+allows you to make test captures.
+
+## Background - Taking Back Control
+
+After migrating from macOS to Linux I lost control over my Logitech BRIO web camera -- the basic
+functionality of the camera (recording videor and sound) works, but the lack of a native first-party
+app meant I had no way to control eg. resolution or field-of-view. I teamed up with Claude to probe
+and research the capabilities of the camera exposed over USB (see [research/FINDINGS.md](research/FINDINGS.md))
+and the exploration made it clear that all the important features are available over public or
+proprietary USB channels. Once mapped, they could be accessed from an ordinary user-space app. So, I
+decided to build this app to take back control.
+
+The app was entirely implemented and tested by Claude Opus 5.5 from [SPEC.md](SPEC.md). It handled
+all coding, debugging, and testing -- all I did was acceptance testing, and assisting with yanking
+the physical cable out when we tested that the app could handle these kinds of disruptions.
 
 ## Build
+
+The app was built on Fedora 44; change the dependencies installation to match whatever package manager
+your distro is using:
 
 ```sh
 sudo dnf install gstreamer1-devel gstreamer1-plugins-base-devel webkit2gtk4.1-devel gtk3-devel \
@@ -14,17 +31,31 @@ npx tauri dev                           # run in development
 npx tauri build --bundles rpm,deb       # target/release/bundle/{rpm,deb}/
 ```
 
+Rust 1.99.1 is assumed to be installed globally (eg. with `rustup`) and Node is fetched from asdf
+and controlled via `.tool-versions` as usual.
+
 Runtime needs GStreamer base/good/bad-free plus `pipewire-gstreamer` (the packages declare these).
 
 Run with `camera-settings --debug` to enable the web inspector and the webview's right-click menu.
 
-## Layout
+## Install
 
-| Path | What |
-|---|---|
+Once built, use your local package manager to install from one of the target bundles (replace
+version number with the actual one stated in (Cargo.toml)[Cargo.toml]):
+
+```
+sudo dnf install "./target/release/bundle/rpm/Camera Settings-0.1.0-1.x86_64.rpm"
+```
+
+After this, the app is available in your launcher.
+
+## Repo Layout
+
+| Path                     | What                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | `crates/camera-control/` | Library: sysfs discovery, udev hotplug, allowlisted V4L2 + UVC XU (FOV only) controls. No Tauri, no GStreamer. |
-| `src-tauri/` | App crate: session state machine, GStreamer pipeline, config, Tauri commands. |
-| `src/` | Svelte frontend. |
+| `src-tauri/`             | App crate: session state machine, GStreamer pipeline, config, Tauri commands.                                  |
+| `src/`                   | Svelte frontend.                                                                                               |
 
 ## Tests
 
@@ -41,7 +72,7 @@ Debug builds read commands from stdin when `CAMERA_SETTINGS_DEBUG_STDIN=1` is se
 ```sh
 tail -f cmds.txt | CAMERA_SETTINGS_DEBUG_STDIN=1 RUST_LOG=camera_settings=debug ./target/debug/camera-settings
 echo "rec audio" >> cmds.txt   # still | rec [audio] [compact] | stop | mode 3840x2160@30 | set <id> <v> | reset <id>
-                               # pause | resume | hidden 0|1 | minimized 0|1 | ui drawer|info|show|scroll N|quit
+                               # pause | resume | hidden 0|1 | minimized 0|1 | ui drawer|info|scroll N|quit
 ```
 
 `CAMERA_SETTINGS_DEBUG_AUDIO_NODE=<node>` (debug builds) forces the recording mic, e.g. a bogus name to

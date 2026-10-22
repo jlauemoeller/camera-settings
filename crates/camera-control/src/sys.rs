@@ -19,6 +19,7 @@ pub const V4L2_CTRL_WHICH_CUR_VAL: u32 = 0;
 pub const V4L2_BUF_TYPE_VIDEO_CAPTURE: u32 = 1;
 pub const V4L2_FRMSIZE_TYPE_DISCRETE: u32 = 1;
 pub const V4L2_FRMIVAL_TYPE_DISCRETE: u32 = 1;
+pub const V4L2_MEMORY_MMAP: u32 = 1;
 pub const V4L2_PIX_FMT_MJPEG: u32 = u32::from_le_bytes(*b"MJPG");
 
 pub const UVC_GET_CUR: u8 = 0x81;
@@ -120,6 +121,16 @@ pub struct v4l2_frmivalenum {
 }
 
 #[repr(C)]
+pub struct v4l2_requestbuffers {
+    pub count: u32,
+    pub type_: u32,
+    pub memory: u32,
+    pub capabilities: u32,
+    pub flags: u8,
+    pub reserved: [u8; 3],
+}
+
+#[repr(C)]
 pub struct uvc_xu_control_query {
     pub unit: u8,
     pub selector: u8,
@@ -130,6 +141,7 @@ pub struct uvc_xu_control_query {
 
 nix::ioctl_read!(vidioc_querycap, b'V', 0, v4l2_capability);
 nix::ioctl_readwrite!(vidioc_enum_fmt, b'V', 2, v4l2_fmtdesc);
+nix::ioctl_readwrite!(vidioc_reqbufs, b'V', 8, v4l2_requestbuffers);
 nix::ioctl_readwrite!(vidioc_querymenu, b'V', 37, v4l2_querymenu);
 nix::ioctl_readwrite!(vidioc_g_ext_ctrls, b'V', 71, v4l2_ext_controls);
 nix::ioctl_readwrite!(vidioc_s_ext_ctrls, b'V', 72, v4l2_ext_controls);
@@ -148,6 +160,7 @@ const _: () = {
     assert!(size_of::<v4l2_frmsizeenum>() == 44);
     assert!(size_of::<v4l2_frmivalenum>() == 52);
     assert!(size_of::<uvc_xu_control_query>() == 16);
+    assert!(size_of::<v4l2_requestbuffers>() == 20);
 };
 
 /// Zero-initialised value of a plain-old-data kernel struct.

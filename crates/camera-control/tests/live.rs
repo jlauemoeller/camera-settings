@@ -107,3 +107,15 @@ fn write_and_restore() {
         assert_eq!(a.value, b.value, "{} not restored", a.id);
     }
 }
+
+/// Run while another process streams the camera (e.g. `gst-launch-1.0 v4l2src ! fakesink`) with
+/// `CAMERA_IN_USE=1`, and without it while nothing streams.
+#[test]
+#[ignore = "needs a BRIO"]
+fn detects_stream_owner() {
+    let (_, dev) = open();
+    let expected = std::env::var_os("CAMERA_IN_USE").is_some();
+    assert_eq!(dev.stream_in_use().unwrap(), expected);
+    // Probing twice must not leave a claim behind.
+    assert_eq!(dev.stream_in_use().unwrap(), expected);
+}

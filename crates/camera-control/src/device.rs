@@ -191,6 +191,21 @@ impl Device {
         self.write_v4l2(def.cid, value)
     }
 
+    /// Is another process streaming from (or has it claimed) this camera? Asks for zero buffers:
+    /// the driver refuses with `EBUSY` if another file handle owns the stream, and otherwise
+    /// allocates nothing and leaves no claim behind. Never disturbs the other stream.
+    pub fn stream_in_use(&self) -> Result<bool> {
+        let mut rb: sys::v4l2_requestbuffers = zeroed();
+        rb.type_ = sys::V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        rb.memory = sys::V4L2_MEMORY_MMAP;
+        // SAFETY: valid fd and a correctly sized struct.
+        match unsafe { sys::vidioc_reqbufs(self.raw(), &mut rb) } {
+            Ok(_) => Ok(false),
+            Err(Errno::EBUSY) => Ok(true),
+            Err(e) => Err(Error::ioctl("REQBUFS", e)),
+        }
+    }
+
     // --- V4L2 ---------------------------------------------------------------------------
 
     fn query_v4l2(&self, def: &V4l2Def) -> Result<Option<Control>> {

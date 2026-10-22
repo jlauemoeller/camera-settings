@@ -40,7 +40,8 @@
   const rates = $derived(
     current ? app.modes.filter((m) => m.width === current.width && m.height === current.height) : [],
   );
-  const modeLocked = $derived(app.isRecording || app.state === "noCamera");
+  // The stream mode belongs to whoever streams: locked while recording or another app has the camera.
+  const modeLocked = $derived(app.isRecording || app.state === "noCamera" || app.state === "busy");
 
   function pickSize(s: { width: number; height: number }) {
     const candidates = app.modes.filter((m) => m.width === s.width && m.height === s.height);
@@ -112,6 +113,9 @@
           </div>
         {/if}
         {#if app.isRecording}<p class="hint">The mode is locked while recording.</p>{/if}
+        {#if app.state === "busy"}
+          <p class="hint">The app using the camera sets the resolution. The other settings below still apply to its picture.</p>
+        {/if}
       {:else}
         <p class="hint">Connect the camera to see its modes.</p>
       {/if}
@@ -189,7 +193,7 @@
     {/if}
 
     <section class="footer">
-      <button class="button" disabled={!app.live} onclick={() => app.resetAll()}>
+      <button class="button" disabled={!app.controlsAvailable} onclick={() => app.resetAll()}>
         <RotateCcw size={15} /> Reset all
       </button>
     </section>

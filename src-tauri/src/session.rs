@@ -40,7 +40,8 @@ pub type Reply<T = ()> = Sender<Result<T, String>>;
 pub enum Msg {
     Hotplug,
     Pipe(u64, PipeEvent),
-    AudioNode(u64, Option<String>),
+    /// Mic lookup result for the camera at this sysfs path.
+    AudioNode(PathBuf, Option<String>),
     SetMode(Mode, Reply),
     CaptureStill(Reply),
     StartRecording {
@@ -100,8 +101,11 @@ struct Visibility {
 }
 
 impl Visibility {
-    fn wants_pause(&self) -> bool {
-        self.minimized || self.hidden || self.manual
+    /// Minimised/hidden: release the camera completely (LED off, SPEC §6.5). A manual pause only
+    /// releases the stream and keeps the controls, so settings can be changed while another app
+    /// uses the camera.
+    fn wants_full_release(&self) -> bool {
+        self.minimized || self.hidden
     }
 }
 
@@ -116,6 +120,9 @@ struct Session {
     message: Option<String>,
     camera: Option<CameraInfo>,
     camera_seen_at: Instant,
+    /// The controls worker holds the camera's control fd (usable without our stream).
+    controls_open: bool,
+    mic_lookup_running: bool,
     audio_node: Option<String>,
     modes: Vec<Mode>,
     pipeline: Option<Pipeline>,
@@ -151,6 +158,8 @@ pub fn spawn(ui: Arc<Ui>, config: Arc<ConfigStore>, controls: Controls, preview:
                 message: None,
                 camera: None,
                 camera_seen_at: Instant::now(),
+                controls_open: false,
+                mic_lookup_running: false,
                 audio_node: None,
                 modes: vec![],
                 pipeline: None,
@@ -209,6 +218,7 @@ impl Session {
             device: self.camera.clone(),
             audio_available: self.audio_node.is_some(),
             manual_pause: self.vis.manual,
+            controls_available: self.controls_open,
         });
     }
 
@@ -242,8 +252,9 @@ impl Session {
         match msg {
             Msg::Hotplug => self.on_hotplug(),
             Msg::Pipe(generation, ev) => self.on_pipe(generation, ev),
-            Msg::AudioNode(generation, node) => {
-                if generation == self.generation && node != self.audio_node {
+            Msg::AudioNode(sysfs, node) => {
+                self.mic_lookup_running = false;
+                if self.camera.as_ref().is_some_and(|c| c.sysfs_path == sysfs) && node != self.audio_node {
                     tracing::info!(?node, "camera microphone");
                     self.audio_node = node;
                     self.publish_state();
@@ -288,6 +299,7 @@ impl Session {
         }
         match self.state {
             CamState::NoCamera | CamState::Error | CamState::Busy => self.schedule_retry(Duration::ZERO),
+            CamState::Paused if !self.vis.wants_full_release() => self.schedule_retry(Duration::ZERO),
             CamState::Paused => {
                 // Keep the paused screen honest about what's attached.
                 let found = find_camera();
@@ -340,8 +352,10 @@ impl Session {
                 }
             }
             PipeEvent::Error { busy: true, .. } => {
-                self.teardown_pipeline();
+                // Another app streams; the controls stay usable and apply to its picture.
+                self.stop_stream();
                 self.set_state(CamState::Busy, None);
+                self.publish_state();
                 self.schedule_retry(BUSY_RETRY);
             }
             PipeEvent::Error { message, .. } => {
@@ -357,13 +371,25 @@ impl Session {
     }
 
     fn apply_visibility(&mut self) {
-        let wants_pause = self.vis.wants_pause();
-        if wants_pause && self.rec.is_none() && self.state != CamState::Paused {
-            // SPEC §6.5: release the device completely so the LED goes off.
-            self.teardown_pipeline();
-            self.connect_deadline = None;
-            self.set_state(CamState::Paused, None);
-        } else if !wants_pause && self.state == CamState::Paused {
+        if self.rec.is_some() {
+            // SPEC §6.5: recording continues; pausing happens when it stops.
+            return;
+        }
+        if self.vis.wants_full_release() {
+            if self.state != CamState::Paused || self.controls_open {
+                // SPEC §6.5: release the device completely so the LED goes off.
+                self.teardown_pipeline();
+                self.set_state(CamState::Paused, None);
+                self.publish_state();
+            }
+        } else if self.vis.manual {
+            if self.pipeline.is_some() || self.state != CamState::Paused || !self.controls_open {
+                // Stream released for other apps; try_connect (re)opens just the controls.
+                self.stop_stream();
+                self.set_state(CamState::Paused, None);
+                self.schedule_retry(Duration::ZERO);
+            }
+        } else if self.state == CamState::Paused {
             // Show black (not static) until the first frame: Connecting.
             self.set_state(CamState::Connecting, None);
             self.schedule_retry(Duration::ZERO);
@@ -374,7 +400,7 @@ impl Session {
 
     fn try_connect(&mut self) {
         self.retry_at = None;
-        if self.vis.wants_pause() {
+        if self.vis.wants_full_release() {
             self.set_state(CamState::Paused, None);
             return;
         }
@@ -387,6 +413,7 @@ impl Session {
             if self.camera.take().is_some() {
                 self.audio_node = None;
             }
+            self.close_controls();
             self.set_state(CamState::NoCamera, None);
             self.schedule_retry(RESCAN);
             return;
@@ -395,10 +422,11 @@ impl Session {
         if !same_camera {
             self.audio_node = None;
             self.camera_seen_at = Instant::now();
+            self.close_controls();
         }
         self.camera = Some(info.clone());
-        // Retrying from Busy/Error keeps that screen up until a frame arrives (no flicker).
-        if !matches!(self.state, CamState::Busy | CamState::Error) {
+        // Retrying from Busy/Error and a manual pause keep their screens (no flicker).
+        if !matches!(self.state, CamState::Busy | CamState::Error | CamState::Paused) {
             self.set_state(CamState::Connecting, None);
         }
 
@@ -410,6 +438,7 @@ impl Session {
             }) {
             Ok(m) => m,
             Err(e) if e == controls::DISCONNECTED || !info.is_present() => {
+                self.close_controls();
                 self.set_state(CamState::NoCamera, None);
                 self.schedule_retry(RESCAN);
                 return;
@@ -422,6 +451,10 @@ impl Session {
             }
             Err(e) => return self.fail(format!("Could not open the camera: {e}")),
         };
+        if !self.controls_open {
+            self.controls_open = true;
+            self.publish_state();
+        }
         if modes.is_empty() {
             return self.fail("The camera offers no MJPEG modes".into());
         }
@@ -433,26 +466,17 @@ impl Session {
             mode: Some(mode),
         });
 
-        self.generation += 1;
-        let generation = self.generation;
-        if let Some(card) = info.alsa_card {
-            let tx = self.tx.clone();
-            std::thread::Builder::new()
-                .name("mic-lookup".into())
-                .spawn(move || {
-                    // WirePlumber may create the node a moment after the device enumerates.
-                    for delay in [0, 1, 2, 4] {
-                        std::thread::sleep(Duration::from_secs(delay));
-                        if let Some(node) = audio::find_mic_node(card) {
-                            let _ = tx.send(Msg::AudioNode(generation, Some(node)));
-                            return;
-                        }
-                    }
-                    let _ = tx.send(Msg::AudioNode(generation, None));
-                })
-                .ok();
+        if self.audio_node.is_none() && !self.mic_lookup_running {
+            self.spawn_mic_lookup(&info);
+        }
+        if self.vis.manual {
+            // Controls only: the stream stays free for other apps.
+            self.set_state(CamState::Paused, None);
+            return;
         }
 
+        self.generation += 1;
+        let generation = self.generation;
         let tx = self.tx.clone();
         let events = Arc::new(move |generation, ev| {
             let _ = tx.send(Msg::Pipe(generation, ev));
@@ -473,13 +497,47 @@ impl Session {
         self.connect_deadline = Some(Instant::now() + CONNECT_TIMEOUT);
     }
 
-    fn teardown_pipeline(&mut self) {
+    fn spawn_mic_lookup(&mut self, info: &CameraInfo) {
+        let Some(card) = info.alsa_card else { return };
+        let (tx, sysfs) = (self.tx.clone(), info.sysfs_path.clone());
+        self.mic_lookup_running = true;
+        std::thread::Builder::new()
+            .name("mic-lookup".into())
+            .spawn(move || {
+                // WirePlumber may create the node a moment after the device enumerates.
+                for delay in [0, 1, 2, 4] {
+                    std::thread::sleep(Duration::from_secs(delay));
+                    if let Some(node) = audio::find_mic_node(card) {
+                        let _ = tx.send(Msg::AudioNode(sysfs, Some(node)));
+                        return;
+                    }
+                }
+                let _ = tx.send(Msg::AudioNode(sysfs, None));
+            })
+            .ok();
+    }
+
+    /// Release our video stream only; the controls stay open.
+    fn stop_stream(&mut self) {
         self.connect_deadline = None;
         if let Some(p) = self.pipeline.take() {
             self.teardowns.push((Instant::now(), p.teardown()));
         }
         self.rec = None;
-        self.controls.send(controls::Msg::Close);
+    }
+
+    fn close_controls(&mut self) {
+        if self.controls_open {
+            self.controls_open = false;
+            self.controls.send(controls::Msg::Close);
+            self.publish_state();
+        }
+    }
+
+    /// Release the camera completely: stream and controls.
+    fn teardown_pipeline(&mut self) {
+        self.stop_stream();
+        self.close_controls();
     }
 
     /// The camera vanished or stopped delivering frames (SPEC §6.3.3/§6.3.4).
@@ -522,7 +580,7 @@ impl Session {
             return Ok(());
         }
         if self.pipeline.is_some() || self.state == CamState::Connecting {
-            self.teardown_pipeline();
+            self.stop_stream();
             self.set_state(CamState::Connecting, None);
             self.schedule_retry(Duration::ZERO);
         }

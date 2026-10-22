@@ -3,7 +3,8 @@
 //!
 //! ```text
 //! still | rec [audio] [compact] | stop | mode 3840x2160@30 | set <id> <value> | reset <id>
-//! pause | resume | hidden <0|1> | minimized <0|1> | ui <drawer|info|show|scroll N|quit>
+//! pause | resume | hidden <0|1> | minimized <0|1> | ui <drawer|info|scroll N|quit>
+//! resolve <adopt|apply>
 //! ```
 
 use std::io::BufRead;
@@ -48,6 +49,10 @@ pub fn spawn(app: AppHandle, session: SessionHandle, controls: Controls) {
                     }),
                     Err(_) => Err("bad value".into()),
                 },
+                ["resolve", choice] => {
+                    let adopt = *choice == "adopt";
+                    controls.call(t, |reply| controls::Msg::Resolve { adopt, reply })
+                }
                 ["reset", id] => controls.call(t, |reply| controls::Msg::Reset {
                     id: id.to_string(),
                     reply,

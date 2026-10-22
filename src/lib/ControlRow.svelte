@@ -14,7 +14,7 @@
   }
   let { control: c, blocked = false, blockedReason, icon: Icon }: Props = $props();
 
-  const disabled = $derived(!app.live || c.inactive || c.readOnly || blocked);
+  const disabled = $derived(!app.controlsAvailable || c.inactive || c.readOnly || blocked);
   const offDefault = $derived(c.value !== c.default);
   const title = $derived(blocked ? blockedReason : c.inactive ? "Controlled automatically" : undefined);
 

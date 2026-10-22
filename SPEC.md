@@ -181,6 +181,16 @@ Streaming ──window minimized/hidden──▶ Paused (device released) ──
 - **Paused**: window minimized/hidden while not recording. The pipeline is torn down and the device fd closed.
   Hotplug events are still processed, so an unplug while Paused moves to NoCamera.
 - **Busy**: the device exists but streaming fails with `EBUSY` (another app holds it). Retry every 2 s.
+  Only streaming is exclusive in V4L2: the controls stay open and usable while Busy, so FOV, zoom etc.
+  can be adjusted live in the other app's picture (e.g. during a video call). Stream mode and captures
+  are unavailable.
+- **Opening a camera another app is streaming** (detected with `VIDIOC_REQBUFS(count = 0)`, which fails with
+  `EBUSY` for a non-owner and has no side effects otherwise): saved settings are *not* applied silently. The
+  camera's current values are compared with the app's settings (saved value, else device default; a manual
+  value counts as "Auto" while its auto mode is on). If anything differs, a dialog lists each difference
+  (setting · camera now · your settings) and offers **Keep the camera's settings** (they become the app's
+  settings) or **Apply my settings** (written to the camera). "Decide later" leaves both as they are, with a
+  link to reopen the dialog. Without another app streaming, saved settings are applied once per connection.
 - **Error**: anything else; show message, retry with backoff (1, 2, 5, 10 s).
 
 ### 6.3 Rules
@@ -220,6 +230,8 @@ Test aid: simulate unplug without touching the cable with
 - On restore, reconnect (mode and controls re-applied) and show black, not static, until the first frame arrives.
   Static means "no camera".
 - While recording, minimizing changes nothing. If the window is still minimized when recording stops, enter Paused.
+- The manual pause button releases only the stream and keeps the controls open, so another app can take
+  the camera while settings are still adjusted here. Minimized/hidden always releases everything.
 - Detection: Tauri window events plus the webview's `visibilitychange`. GNOME on Wayland may not report minimize
   reliably (M0 checks this). If it doesn't, the fallback is a manual pause/resume button in the status chip
   (Lucide `pause` / `play`).
@@ -228,7 +240,7 @@ Test aid: simulate unplug without touching the cable with
 
 ### 7.1 Principles
 
-Dark only (camera apps compete with the image). Full-bleed black viewport, video letterboxed (`object-fit: contain`). Controls float over the video on translucent, blurred surfaces and fade out after 3 s of no mouse movement (not while recording, not while a panel is open). One accent color for recording (red). System UI font. Default window 1280×800, minimum 640×420.
+Dark only (camera apps compete with the image). Full-bleed black viewport, video letterboxed (`object-fit: contain`). Controls float over the video on translucent, blurred surfaces and are always visible (no auto-hide: discoverability, e.g. of the pause button, matters more than an unobstructed picture). One accent color for recording (red). System UI font. Default window 1280×800, minimum 640×420.
 
 ### 7.2 Layout
 
@@ -242,6 +254,7 @@ Dark only (camera apps compete with the image). Full-bleed black viewport, video
 └──────────────────────────────────────────────────────────────┘
 ```
 
+- Top right: Info, Settings, and a Quit button (Lucide `power`) set 24 px apart from the other two so it isn't hit by accident.
 - **Capture bar** (bottom center): last-capture thumbnail · Photo/Video segmented toggle · shutter · mic toggle (Video mode only).
 - **Settings drawer** (right, 340 px, overlays the video): sections **Format** (mode list, USB 2 notice),
   **Framing** (FOV, zoom, pan, tilt), **Exposure**, **Focus**, **Color**, **Output** (photo folder, video folder, video quality),
@@ -250,10 +263,16 @@ Dark only (camera apps compete with the image). Full-bleed black viewport, video
 
 ### 7.3 Camera-off / busy screen
 
-- Full viewport: animated **video static** (TV-noise) with a large centered Lucide `video-off` icon (96 px, white, soft shadow) and one line of text below: "Camera disconnected" / "Camera in use by another app" / error text.
+- Full viewport with a large centered Lucide `video-off` icon (96 px, white, soft shadow) and one line of text below: "Camera disconnected" / "Camera in use by another app" / error text.
+- Background: animated **video static** (TV-noise) only when no camera is detected. When the camera is in use
+  by another app, erroring, or paused, a calm warm-brown radial gradient instead (in the spirit of Meet's
+  camera-off tile). Rule: no camera → static; camera present but not streaming to us → gradient; our stream → picture.
+- Camera in use by another app: the settings drawer opens automatically (once per busy episode), since the
+  settings are the only thing that can be used.
 - Static: canvas at ~320×180, random grayscale per pixel, scaled up with slight blur, faint horizontal scanlines and a slow rolling band; ~24 fps. Kept dim (~35% luminance) so the icon reads clearly.
 - `prefers-reduced-motion` → plain black background, no animation.
-- Capture bar and mode/control widgets are disabled (controls keep showing last values).
+- Capture bar and mode/control widgets are disabled (controls keep showing last values), except in the busy
+  state, where the controls stay enabled and a second line says "Settings still work and apply to its picture."
 
 ### 7.4 Info overlay (toggle, `I` key)
 
@@ -375,7 +394,7 @@ options?, unit?, inactive, readOnly }`. FOV appears as `{ id: "fov", kind: "menu
 **M2**: controls (allowlist, FOV via GUID lookup), settings drawer, persistence + restore, H3.
 **M3**: stills, photo/video output folders, thumbnails/toasts, H4.
 **M4**: video recording, Original + Compact, BRIO mic, A/V sync, H5.
-**M5**: polish: auto-hide controls, keyboard shortcuts, info overlay, minimize-to-pause, H8–H12, `.rpm` + `.deb` via
+**M5**: polish: keyboard shortcuts, info overlay, minimize-to-pause, H8–H12, `.rpm` + `.deb` via
 Tauri bundler.
 
 ## 11. Future (not v1)
@@ -405,3 +424,5 @@ Tauri bundler.
 | 2026-10-21 | M0: on unplug `v4l2src` posts `Could not read from resource` within ms of the udev event, and `set_state(Null)` returns promptly. The recording is finalized by pushing EOS into the record branch (534 s 4K file finalized 25 ms after unplug). |
 | 2026-10-21 | M0 measured CPU (% of one core, app + all WebKit processes): 1080p30 preview ≈ 33% (**misses** the 25% target; WebKit's JPEG decode is ~25% by itself); 4K30 preview ≈ 97%; 4K30 preview + Original recording ≈ 112% (**misses** the 100% target). An HTTP/`<img>` fallback would not help (same decode). Follow-up: size the preview to the window. |
 | 2026-10-21 | A/V sync (clap test, Compact 1080p): audio trails video by ≈55 ms in the file (target ≤ 33 ms). Not noticeable in Video Player or Cine; deferred. Likely cause: PipeWire buffer timestamps vs. UVC capture timestamps. |
+| 2026-10-22 | Controls stay available while another app streams (Busy) and during a manual pause (stream released, controls kept). Minimize still releases the device completely. |
+| 2026-10-22 | Opening the camera while another app streams asks before changing its picture when settings differ (keep camera's / apply mine), instead of applying saved settings silently. |

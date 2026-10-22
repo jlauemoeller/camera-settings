@@ -49,6 +49,18 @@ export function formatValue(c: Control, value = c.value): string {
   return opt ? opt.label : String(value);
 }
 
+/** Human value of a setting for comparisons: switches as On/Off, auto modes as Auto/Manual,
+ * `null` (value picked automatically) as "Auto". */
+export function settingText(c: Control | undefined, value: number | null): string {
+  if (value === null) return "Auto";
+  if (!c) return String(value);
+  if (c.id === "exposure_auto") return value === 1 ? "Manual" : "Auto";
+  if (c.id.endsWith("_auto")) return value ? "Auto" : "Manual";
+  if (c.kind === "bool" || (c.kind === "int" && c.min === 0 && c.max === 1)) return value ? "On" : "Off";
+  if (c.id === "power_line_frequency" && value === 0) return "Off";
+  return formatValue(c, value);
+}
+
 export function duration(ms: number): string {
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);

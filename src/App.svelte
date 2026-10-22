@@ -11,23 +11,19 @@
   import SettingsDrawer from "./lib/SettingsDrawer.svelte";
   import Toasts from "./lib/Toasts.svelte";
   import InfoOverlay from "./lib/InfoOverlay.svelte";
+  import ConflictDialog from "./lib/ConflictDialog.svelte";
 
   let drawerOpen = $state(false);
+
+  // While another app has the stream, the settings are the only thing to work with: open them
+  // once per busy episode (closing the drawer is respected until the camera frees up again).
+  let wasBusy = false;
+  $effect(() => {
+    const busy = app.state === "busy" && app.controlsAvailable;
+    if (busy && !wasBusy) drawerOpen = true;
+    wasBusy = busy;
+  });
   let infoOpen = $state(false);
-  let idle = $state(false);
-  let hovering = $state(false);
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-
-  // SPEC §7.1: controls fade after 3 s without mouse movement, except while recording, while a
-  // panel is open, or while the pointer rests on a control.
-  const keepVisible = $derived(app.isRecording || drawerOpen || hovering || !app.live);
-  const hidden = $derived(idle && !keepVisible);
-
-  function poke() {
-    idle = false;
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => (idle = true), 3000);
-  }
 
   // No window decorations on some compositors (niri), so the app needs its own way out.
   // A running recording is stopped and saved by the backend's shutdown path.
@@ -59,7 +55,6 @@
       return;
     }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
-    poke();
     switch (e.key) {
       case " ":
         e.preventDefault();
@@ -105,33 +100,26 @@
         const [cmd, arg] = payload.split(" ");
         if (cmd === "drawer") drawerOpen = !drawerOpen;
         else if (cmd === "info") infoOpen = !infoOpen;
-        else if (cmd === "show") poke();
         else if (cmd === "quit") quit();
         else if (cmd === "scroll") document.querySelector(".scroll")?.scrollTo(0, Number(arg));
       });
     }
     const onVisibility = () => void api.setHidden(document.hidden);
     document.addEventListener("visibilitychange", onVisibility);
-    poke();
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      clearTimeout(idleTimer);
-    };
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   });
 </script>
 
-<svelte:window onkeydown={onKey} onmousemove={poke} onmousedown={poke} oncontextmenu={onContextMenu} />
+<svelte:window onkeydown={onKey} oncontextmenu={onContextMenu} />
 
-<main class:cursor-hidden={hidden}>
+<main>
   <Viewport />
 
-  <div class="overlay" class:faded={hidden}>
+  <div class="overlay">
     <div
       class="top"
       role="toolbar"
       tabindex="-1"
-      onmouseenter={() => (hovering = true)}
-      onmouseleave={() => (hovering = false)}
     >
       <StatusChip />
       <div class="top-right">
@@ -142,7 +130,7 @@
           <SlidersHorizontal size={18} />
         </button>
         <button
-          class="icon-btn surface round"
+          class="icon-btn surface round quit"
           title={app.isRecording ? "Stop recording and quit (Ctrl+Q)" : "Quit (Ctrl+Q)"}
           aria-label="Quit"
           onclick={quit}
@@ -161,8 +149,6 @@
       <div
         role="toolbar"
         tabindex="-1"
-        onmouseenter={() => (hovering = true)}
-        onmouseleave={() => (hovering = false)}
       >
         <CaptureBar />
       </div>
@@ -171,6 +157,10 @@
 
   {#if drawerOpen}
     <SettingsDrawer onclose={() => (drawerOpen = false)} />
+  {/if}
+
+  {#if app.conflict && !app.conflictDismissed}
+    <ConflictDialog />
   {/if}
 </main>
 
@@ -181,20 +171,10 @@
     overflow: hidden;
     background: #000;
   }
-  main.cursor-hidden {
-    cursor: none;
-  }
   .overlay {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    transition: opacity 0.4s ease;
-  }
-  .overlay.faded {
-    opacity: 0;
-  }
-  .overlay.faded * {
-    pointer-events: none !important;
   }
   .top {
     position: absolute;
@@ -210,6 +190,10 @@
   .top-right {
     display: flex;
     gap: 8px;
+  }
+  /* Keep Quit well apart from Settings so a near miss doesn't close the app. */
+  .quit {
+    margin-left: 24px;
   }
   .info-pos {
     position: absolute;

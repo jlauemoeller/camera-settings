@@ -9,6 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::config::{self, CaptureKind, Config, VideoQuality};
+use crate::controls::SettingDiff;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +39,9 @@ pub struct StatePayload {
     pub audio_available: bool,
     /// True when the user paused manually (as opposed to window minimised).
     pub manual_pause: bool,
+    /// The camera's controls can be changed now. Also true while another app streams the
+    /// camera (Busy) and during a manual pause: changes apply to whoever has the stream.
+    pub controls_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,6 +117,8 @@ pub struct Snapshot {
     pub recording: Option<RecordingPayload>,
     /// Started with `--debug`: keep the webview context menu (web inspector).
     pub debug: bool,
+    /// Pending "camera in use with different settings" question.
+    pub conflict: Option<Vec<SettingDiff>>,
 }
 
 /// Emits events and mirrors them into the snapshot.
@@ -130,6 +136,7 @@ impl Ui {
                 device: None,
                 audio_available: false,
                 manual_pause: false,
+                controls_available: false,
             },
             modes: ModesPayload {
                 modes: vec![],
@@ -141,6 +148,7 @@ impl Ui {
             compact_available,
             recording: None,
             debug,
+            conflict: None,
         };
         Self {
             app,
@@ -201,6 +209,15 @@ impl Ui {
                 interrupted,
             },
         );
+    }
+
+    pub fn settings_conflict(&self, differences: Option<Vec<SettingDiff>>) {
+        self.snap.lock().unwrap().conflict = differences.clone();
+        #[derive(Clone, Serialize)]
+        struct P {
+            differences: Option<Vec<SettingDiff>>,
+        }
+        self.emit("settings-conflict", P { differences });
     }
 
     pub fn stats(&self, s: Stats) {

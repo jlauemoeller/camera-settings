@@ -12,6 +12,7 @@ import {
   type Prefs,
   type RecordingPayload,
   type Snapshot,
+  type SettingDiff,
   type Stats,
 } from "./api";
 import { basename } from "./format";
@@ -39,6 +40,10 @@ class AppStore {
   device = $state<CameraInfo | null>(null);
   audioAvailable = $state(false);
   manualPause = $state(false);
+  controlsAvailable = $state(false);
+  /** Camera in use by another app with settings that differ from ours: which side wins? */
+  conflict = $state<SettingDiff[] | null>(null);
+  conflictDismissed = $state(false);
   modes = $state<Mode[]>([]);
   usbSpeed = $state(0);
   mode = $state<Mode | null>(null);
@@ -84,6 +89,7 @@ class AppStore {
         this.device = p.device;
         this.audioAvailable = p.audioAvailable;
         this.manualPause = p.manualPause;
+        this.controlsAvailable = p.controlsAvailable;
         if (p.state !== "recording") this.recording = null;
       }),
       on("controls-changed", (p) => this.mergeControls(p.controls)),
@@ -104,6 +110,10 @@ class AppStore {
         this.toast(text, "info", p.path);
       }),
       on("error", (p) => this.toast(p.message, "error")),
+      on("settings-conflict", (p) => {
+        this.conflict = p.differences;
+        this.conflictDismissed = false;
+      }),
     ]);
     this.apply(await api.getSnapshot());
     this.ready = true;
@@ -115,6 +125,7 @@ class AppStore {
     this.device = s.device;
     this.audioAvailable = s.audioAvailable;
     this.manualPause = s.manualPause;
+    this.controlsAvailable = s.controlsAvailable;
     this.modes = s.modes.modes;
     this.usbSpeed = s.modes.usbSpeed;
     this.mode = s.modes.mode;
@@ -123,6 +134,7 @@ class AppStore {
     this.compactAvailable = s.compactAvailable;
     this.recording = s.recording;
     this.debug = s.debug;
+    this.conflict = s.conflict;
   }
 
   /** Device values win, except for a control whose write is still pending. */
@@ -178,6 +190,16 @@ class AppStore {
   resetAll() {
     this.queued.clear();
     void this.guard(api.resetAll());
+  }
+
+  async resolveConflict(adopt: boolean) {
+    try {
+      await api.resolveSettingsConflict(adopt);
+      this.toast(adopt ? "Kept the camera's settings" : "Applied your settings to the camera");
+    } catch (e) {
+      const msg = errorText(e);
+      if (msg !== DISCONNECTED) this.toast(msg, "error");
+    }
   }
 
   setMode(mode: Mode) {

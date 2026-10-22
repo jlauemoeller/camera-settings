@@ -96,6 +96,7 @@ pub fn run() {
             commands::set_control,
             commands::reset_control,
             commands::reset_all,
+            commands::resolve_settings_conflict,
             commands::capture_still,
             commands::start_recording,
             commands::stop_recording,

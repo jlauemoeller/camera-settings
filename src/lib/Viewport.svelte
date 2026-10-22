@@ -89,8 +89,10 @@
   <canvas bind:this={canvas} class:hidden={!hasFrame}></canvas>
 
   {#if offline}
-    <div class="offline">
-      <StaticNoise />
+    <div class="offline" class:gradient={app.state !== "noCamera"}>
+      <!-- Backgrounds: no camera → static; camera there but not ours (busy, error, paused) → gradient;
+           our stream → the picture. -->
+      {#if app.state === "noCamera"}<StaticNoise />{/if}
       <div class="offline-content">
         {#if app.state === "error"}
           <TriangleAlert size={96} strokeWidth={1.5} />
@@ -98,14 +100,25 @@
           <VideoOff size={96} strokeWidth={1.5} />
         {/if}
         <p>{offlineText}</p>
+        {#if app.state === "busy" && app.controlsAvailable}
+          <p class="sub">Settings still work and apply to its picture.</p>
+        {/if}
+        {#if app.conflict && app.conflictDismissed}
+          <button class="review" onclick={() => (app.conflictDismissed = false)}>
+            Your saved settings weren't applied. Review differences
+          </button>
+        {/if}
       </div>
     </div>
   {:else if app.state === "paused"}
-    <div class="paused">
+    <div class="paused gradient">
       <button class="resume" onclick={() => app.setPaused(false)} title="Resume preview">
         <Play size={40} />
       </button>
       <p>{app.manualPause ? "Preview paused" : "Paused while the window is hidden"}</p>
+      {#if app.manualPause && app.controlsAvailable}
+        <p class="sub">The camera is free for other apps. Settings still work.</p>
+      {/if}
     </div>
   {/if}
 
@@ -137,6 +150,11 @@
     display: grid;
     place-items: center;
   }
+  .gradient {
+    background:
+      radial-gradient(ellipse 75% 65% at 45% 35%, #6b4a2f 0%, transparent 70%),
+      linear-gradient(160deg, #5a3e28 0%, #4a321f 55%, #3d2817 100%);
+  }
   .offline-content {
     position: relative;
     display: flex;
@@ -154,6 +172,20 @@
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
     max-width: 60ch;
     text-align: center;
+  }
+  .offline-content p.sub,
+  .paused p.sub {
+    font-size: 14px;
+    font-weight: 400;
+    opacity: 0.8;
+    margin-top: -8px;
+  }
+  .review {
+    font-size: 13px;
+    color: #fff;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    opacity: 0.9;
   }
   .paused {
     align-content: center;
