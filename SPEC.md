@@ -227,8 +227,8 @@ Test aid: simulate unplug without touching the cable with
 
 - When the window is minimized or hidden and **not recording**, stop streaming and release the device completely, so
   the camera's LED turns off and other apps can use the camera.
-- On restore, reconnect (mode and controls re-applied) and show black, not static, until the first frame arrives.
-  Static means "no camera".
+- On restore, reconnect (mode and controls re-applied) and keep showing the gradient, not static, until the
+  first frame is drawn, with a spinning Lucide `loader-circle` in the middle. Static means "no camera".
 - While recording, minimizing changes nothing. If the window is still minimized when recording stops, enter Paused.
 - The manual pause button releases only the stream and keeps the controls open, so another app can take
   the camera while settings are still adjusted here. Minimized/hidden always releases everything.
@@ -267,6 +267,8 @@ Dark only (camera apps compete with the image). Full-bleed black viewport, video
 - Background: animated **video static** (TV-noise) only when no camera is detected. When the camera is in use
   by another app, erroring, or paused, a calm warm-brown radial gradient instead (in the spirit of Meet's
   camera-off tile). Rule: no camera → static; camera present but not streaming to us → gradient; our stream → picture.
+  The gradient replaces only the picture area: letterboxed with the stream's aspect ratio (while busy the other
+  app's current format, read with `VIDIOC_G_FMT`; otherwise our mode; 16:9 if unknown), black around it.
 - Camera in use by another app: the settings drawer opens automatically (once per busy episode), since the
   settings are the only thing that can be used.
 - Static: canvas at ~320×180, random grayscale per pixel, scaled up with slight blur, faint horizontal scanlines and a slow rolling band; ~24 fps. Kept dim (~35% luminance) so the icon reads clearly.
@@ -294,6 +296,7 @@ Small monospace panel: resolution, format, **measured** fps, dropped frames, USB
 | Info overlay                   | `info`                           |
 | Pause / resume (fallback §6.5) | `pause` / `play`                 |
 | Quit                           | `power`                          |
+| Starting camera (spinner)      | `loader-circle`                  |
 | USB notice                     | `usb`                            |
 | FOV                            | `scan`                           |
 | Zoom                           | `zoom-in`                        |

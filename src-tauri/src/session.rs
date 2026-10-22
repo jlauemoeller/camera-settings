@@ -14,7 +14,7 @@ use crate::config::{CaptureKind, ConfigStore, VideoQuality};
 use crate::controls::{self, Controls};
 use crate::pipeline::{PipeEvent, Pipeline, RecordOptions};
 use crate::preview::Preview;
-use crate::ui::{CamState, ModesPayload, RecordingPayload, StatePayload, Stats, Ui};
+use crate::ui::{CamState, FrameSize, ModesPayload, RecordingPayload, StatePayload, Stats, Ui};
 
 const TICK: Duration = Duration::from_millis(100);
 const WATCHDOG: Duration = Duration::from_secs(2);
@@ -122,6 +122,7 @@ struct Session {
     camera_seen_at: Instant,
     /// The controls worker holds the camera's control fd (usable without our stream).
     controls_open: bool,
+    busy_frame: Option<FrameSize>,
     mic_lookup_running: bool,
     audio_node: Option<String>,
     modes: Vec<Mode>,
@@ -159,6 +160,7 @@ pub fn spawn(ui: Arc<Ui>, config: Arc<ConfigStore>, controls: Controls, preview:
                 camera: None,
                 camera_seen_at: Instant::now(),
                 controls_open: false,
+                busy_frame: None,
                 mic_lookup_running: false,
                 audio_node: None,
                 modes: vec![],
@@ -219,6 +221,7 @@ impl Session {
             audio_available: self.audio_node.is_some(),
             manual_pause: self.vis.manual,
             controls_available: self.controls_open,
+            busy_frame: self.busy_frame.filter(|_| self.state == CamState::Busy),
         });
     }
 
@@ -354,6 +357,12 @@ impl Session {
             PipeEvent::Error { busy: true, .. } => {
                 // Another app streams; the controls stay usable and apply to its picture.
                 self.stop_stream();
+                // Re-read every retry: the other app may switch resolution.
+                self.busy_frame = self
+                    .controls
+                    .call(Duration::from_millis(500), |reply| controls::Msg::CurrentSize { reply })
+                    .ok()
+                    .map(|(width, height)| FrameSize { width, height });
                 self.set_state(CamState::Busy, None);
                 self.publish_state();
                 self.schedule_retry(BUSY_RETRY);

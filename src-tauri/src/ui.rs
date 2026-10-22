@@ -42,6 +42,14 @@ pub struct StatePayload {
     /// The camera's controls can be changed now. Also true while another app streams the
     /// camera (Busy) and during a manual pause: changes apply to whoever has the stream.
     pub controls_available: bool,
+    /// While Busy: the other app's frame size, so the placeholder has the shape of its picture.
+    pub busy_frame: Option<FrameSize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct FrameSize {
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -137,6 +145,7 @@ impl Ui {
                 audio_available: false,
                 manual_pause: false,
                 controls_available: false,
+                busy_frame: None,
             },
             modes: ModesPayload {
                 modes: vec![],

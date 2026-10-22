@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { VideoOff, TriangleAlert, Play } from "@lucide/svelte";
+  import { VideoOff, TriangleAlert, Play, LoaderCircle } from "@lucide/svelte";
   import { api } from "./api";
   import { app } from "./store.svelte";
   import StaticNoise from "./StaticNoise.svelte";
@@ -75,6 +75,13 @@
     return () => clearInterval(fpsTimer);
   });
 
+  // The gradient stands in for the picture, so it gets the picture's shape: the other app's frame
+  // size while busy, else our mode, else 16:9.
+  const aspect = $derived.by(() => {
+    const f = app.state === "busy" && app.busyFrame ? app.busyFrame : app.mode;
+    return f && f.height > 0 ? f.width / f.height : 16 / 9;
+  });
+
   const offline = $derived(app.state === "noCamera" || app.state === "busy" || app.state === "error");
   const offlineText = $derived(
     app.state === "busy"
@@ -89,10 +96,10 @@
   <canvas bind:this={canvas} class:hidden={!hasFrame}></canvas>
 
   {#if offline}
-    <div class="offline" class:gradient={app.state !== "noCamera"}>
-      <!-- Backgrounds: no camera → static; camera there but not ours (busy, error, paused) → gradient;
-           our stream → the picture. -->
-      {#if app.state === "noCamera"}<StaticNoise />{/if}
+    <div class="offline" style:--aspect={aspect}>
+      <!-- Backgrounds: no camera → static (full window); camera there but not ours (busy, error,
+           paused) → a gradient frame shaped like the picture; our stream → the picture. -->
+      {#if app.state === "noCamera"}<StaticNoise />{:else}<div class="frame"></div>{/if}
       <div class="offline-content">
         {#if app.state === "error"}
           <TriangleAlert size={96} strokeWidth={1.5} />
@@ -111,7 +118,8 @@
       </div>
     </div>
   {:else if app.state === "paused"}
-    <div class="paused gradient">
+    <div class="paused" style:--aspect={aspect}>
+      <div class="frame"></div>
       <button class="resume" onclick={() => app.setPaused(false)} title="Resume preview">
         <Play size={40} />
       </button>
@@ -119,6 +127,13 @@
       {#if app.manualPause && app.controlsAvailable}
         <p class="sub">The camera is free for other apps. Settings still work.</p>
       {/if}
+    </div>
+  {:else if !hasFrame}
+    <!-- Connecting, or streaming before the first frame is drawn: keep the gradient up so
+         resuming never blanks to black. -->
+    <div class="paused" style:--aspect={aspect}>
+      <div class="frame"></div>
+      <span class="spinner" role="status" aria-label="Starting camera"><LoaderCircle size={44} strokeWidth={1.75} /></span>
     </div>
   {/if}
 
@@ -149,8 +164,33 @@
     inset: 0;
     display: grid;
     place-items: center;
+    container-type: size;
   }
-  .gradient {
+  .spinner {
+    display: grid;
+    color: rgba(255, 255, 255, 0.85);
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation-duration: 2.5s;
+    }
+  }
+  /* Content sits above the absolutely positioned frame. */
+  .paused > :not(.frame) {
+    position: relative;
+  }
+  /* Letterboxed like the canvas (object-fit: contain), black around it. */
+  .frame {
+    position: absolute;
+    width: min(100cqw, calc(100cqh * var(--aspect)));
+    aspect-ratio: var(--aspect);
     background:
       radial-gradient(ellipse 75% 65% at 45% 35%, #6b4a2f 0%, transparent 70%),
       linear-gradient(160deg, #5a3e28 0%, #4a321f 55%, #3d2817 100%);

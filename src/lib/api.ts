@@ -54,6 +54,8 @@ export interface StatePayload {
   manualPause: boolean;
   /** Controls can be changed now, also while another app has the stream (busy) or when paused. */
   controlsAvailable: boolean;
+  /** While busy: the other app's frame size. */
+  busyFrame: { width: number; height: number } | null;
 }
 
 export interface ModesPayload {

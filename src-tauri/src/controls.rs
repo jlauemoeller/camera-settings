@@ -35,6 +35,10 @@ pub enum Msg {
     ResetAll {
         reply: Reply<()>,
     },
+    /// The stream's current frame size (the other app's, while it owns the stream).
+    CurrentSize {
+        reply: Reply<(u32, u32)>,
+    },
     /// Settle a [`SettingDiff`] conflict: adopt the camera's values, or apply the app's.
     Resolve {
         adopt: bool,
@@ -186,6 +190,13 @@ impl Worker {
             }
             Msg::ResetAll { reply } => {
                 let _ = reply.send(self.reset_all());
+            }
+            Msg::CurrentSize { reply } => {
+                let r = match &self.dev {
+                    Some(open) => open.dev.current_size().map_err(|e| e.to_string()),
+                    None => Err(DISCONNECTED.into()),
+                };
+                let _ = reply.send(r);
             }
             Msg::Resolve { adopt, reply } => {
                 let _ = reply.send(self.resolve(adopt));

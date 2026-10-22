@@ -116,6 +116,7 @@ fn detects_stream_owner() {
     let (_, dev) = open();
     let expected = std::env::var_os("CAMERA_IN_USE").is_some();
     assert_eq!(dev.stream_in_use().unwrap(), expected);
+    println!("current size: {:?}", dev.current_size().unwrap());
     // Probing twice must not leave a claim behind.
     assert_eq!(dev.stream_in_use().unwrap(), expected);
 }

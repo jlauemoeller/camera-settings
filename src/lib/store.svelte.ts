@@ -41,6 +41,7 @@ class AppStore {
   audioAvailable = $state(false);
   manualPause = $state(false);
   controlsAvailable = $state(false);
+  busyFrame = $state<{ width: number; height: number } | null>(null);
   /** Camera in use by another app with settings that differ from ours: which side wins? */
   conflict = $state<SettingDiff[] | null>(null);
   conflictDismissed = $state(false);
@@ -90,6 +91,7 @@ class AppStore {
         this.audioAvailable = p.audioAvailable;
         this.manualPause = p.manualPause;
         this.controlsAvailable = p.controlsAvailable;
+        this.busyFrame = p.busyFrame;
         if (p.state !== "recording") this.recording = null;
       }),
       on("controls-changed", (p) => this.mergeControls(p.controls)),
@@ -126,6 +128,7 @@ class AppStore {
     this.audioAvailable = s.audioAvailable;
     this.manualPause = s.manualPause;
     this.controlsAvailable = s.controlsAvailable;
+    this.busyFrame = s.busyFrame;
     this.modes = s.modes.modes;
     this.usbSpeed = s.modes.usbSpeed;
     this.mode = s.modes.mode;

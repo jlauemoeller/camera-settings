@@ -191,6 +191,16 @@ impl Device {
         self.write_v4l2(def.cid, value)
     }
 
+    /// The stream's current frame size. Read-only, so it also works (and reports the other app's
+    /// format) while another process owns the stream.
+    pub fn current_size(&self) -> Result<(u32, u32)> {
+        let mut f: sys::v4l2_format = zeroed();
+        f.type_ = sys::V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        // SAFETY: valid fd and a correctly sized struct.
+        unsafe { sys::vidioc_g_fmt(self.raw(), &mut f) }.map_err(|e| Error::ioctl("G_FMT", e))?;
+        Ok((f.width, f.height))
+    }
+
     /// Is another process streaming from (or has it claimed) this camera? Asks for zero buffers:
     /// the driver refuses with `EBUSY` if another file handle owns the stream, and otherwise
     /// allocates nothing and leaves no claim behind. Never disturbs the other stream.

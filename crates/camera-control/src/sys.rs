@@ -120,6 +120,17 @@ pub struct v4l2_frmivalenum {
     pub reserved: [u32; 2],
 }
 
+/// `struct v4l2_format`: the union starts at offset 8 (8-byte aligned); for capture formats it
+/// begins with `width`, `height`. Only those two are read.
+#[repr(C)]
+pub struct v4l2_format {
+    pub type_: u32,
+    pub _pad: u32,
+    pub width: u32,
+    pub height: u32,
+    pub rest: [u64; 24],
+}
+
 #[repr(C)]
 pub struct v4l2_requestbuffers {
     pub count: u32,
@@ -141,6 +152,7 @@ pub struct uvc_xu_control_query {
 
 nix::ioctl_read!(vidioc_querycap, b'V', 0, v4l2_capability);
 nix::ioctl_readwrite!(vidioc_enum_fmt, b'V', 2, v4l2_fmtdesc);
+nix::ioctl_readwrite!(vidioc_g_fmt, b'V', 4, v4l2_format);
 nix::ioctl_readwrite!(vidioc_reqbufs, b'V', 8, v4l2_requestbuffers);
 nix::ioctl_readwrite!(vidioc_querymenu, b'V', 37, v4l2_querymenu);
 nix::ioctl_readwrite!(vidioc_g_ext_ctrls, b'V', 71, v4l2_ext_controls);
@@ -161,6 +173,7 @@ const _: () = {
     assert!(size_of::<v4l2_frmivalenum>() == 52);
     assert!(size_of::<uvc_xu_control_query>() == 16);
     assert!(size_of::<v4l2_requestbuffers>() == 20);
+    assert!(size_of::<v4l2_format>() == 208);
 };
 
 /// Zero-initialised value of a plain-old-data kernel struct.
