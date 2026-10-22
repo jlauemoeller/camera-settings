@@ -2,7 +2,6 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Camera Settings",
   "mainBinaryName": "camera-settings",
-  "version": "0.1.0",
   "identifier": "io.github.camera-settings.CameraSettings",
   "build": {
     "beforeDevCommand": "npm run dev",
