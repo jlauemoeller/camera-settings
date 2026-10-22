@@ -1,7 +1,6 @@
 # Camera Settings: specification
 
-Working title: **Camera Settings** (package/binary `camera-settings`). The final product name is undecided (see Open questions).
-A small Linux desktop app (Tauri 2 + Rust) for the Logitech BRIO: live preview, safe camera settings, and test captures (photo, video with or without the camera's microphone). It must survive the camera being unplugged at any moment.
+Working title: **Camera Settings** (package/binary `camera-settings`). The final product name is undecided (see Open questions). A small Linux desktop app (Tauri 2 + Rust) for the Logitech BRIO: live preview, safe camera settings, and test captures (photo, video with or without the camera's microphone). It must survive the camera being unplugged at any moment.
 
 Background research: [research/FINDINGS.md](research/FINDINGS.md) (what the device exposes) and `research/probe.py` (read-only scanner). "FINDINGS §n" below refers to that file.
 
@@ -139,10 +138,10 @@ Enabled/disabled state follows the V4L2 `INACTIVE` flag as reported by the drive
 
 Each media type goes to its own folder:
 
-| Media | Default | Fallback |
-|---|---|---|
+| Media  | Default                                         | Fallback     |
+| ------ | ----------------------------------------------- | ------------ |
 | Photos | `xdg-user-dir PICTURES` (`dirs::picture_dir()`) | `~/Pictures` |
-| Videos | `xdg-user-dir VIDEOS` (`dirs::video_dir()`) | `~/Videos` |
+| Videos | `xdg-user-dir VIDEOS` (`dirs::video_dir()`)     | `~/Videos`   |
 
 - Folders are created if missing. XDG lookup handles localized folder names.
 - Each folder is changed independently in Settings → Output via the native folder picker (`tauri-plugin-dialog`),
@@ -205,20 +204,20 @@ Streaming ──window minimized/hidden──▶ Paused (device released) ──
 
 ### 6.4 Acceptance tests (all must pass)
 
-| #   | Scenario                              | Expected                                                                             |
-| --- | ------------------------------------- | ------------------------------------------------------------------------------------ |
-| H1  | Launch with no camera                 | Camera-off screen within 1 s; UI responsive                                          |
-| H2  | Unplug during preview                 | Camera-off screen within 2 s; window stays responsive (drag, resize, open settings)  |
-| H3  | Unplug while dragging a slider        | No freeze; slider stops affecting anything; camera-off screen                        |
-| H4  | Unplug during still capture           | No file or a valid JPEG; never a zero-byte/corrupt file left behind                  |
-| H5  | Unplug during 4K recording with audio | Playable `.mkv` up to the unplug point; interrupted toast                            |
-| H6  | Replug after any of the above         | Preview resumes with previous mode and settings, no user action                      |
-| H7  | Camera held by another app            | Busy screen; resumes automatically when released                                     |
-| H8  | Suspend/resume with camera attached   | Preview resumes (or clean reconnect) after resume                                    |
-| H9  | Unplug/replug 20× in a row            | No crash, no leaked threads growing unbounded, no fd leak beyond abandoned pipelines |
+| #   | Scenario                              | Expected                                                                                     |
+| --- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| H1  | Launch with no camera                 | Camera-off screen within 1 s; UI responsive                                                  |
+| H2  | Unplug during preview                 | Camera-off screen within 2 s; window stays responsive (drag, resize, open settings)          |
+| H3  | Unplug while dragging a slider        | No freeze; slider stops affecting anything; camera-off screen                                |
+| H4  | Unplug during still capture           | No file or a valid JPEG; never a zero-byte/corrupt file left behind                          |
+| H5  | Unplug during 4K recording with audio | Playable `.mkv` up to the unplug point; interrupted toast                                    |
+| H6  | Replug after any of the above         | Preview resumes with previous mode and settings, no user action                              |
+| H7  | Camera held by another app            | Busy screen; resumes automatically when released                                             |
+| H8  | Suspend/resume with camera attached   | Preview resumes (or clean reconnect) after resume                                            |
+| H9  | Unplug/replug 20× in a row            | No crash, no leaked threads growing unbounded, no fd leak beyond abandoned pipelines         |
 | H10 | Minimize while previewing             | Within 2 s no process holds the device (`fuser /dev/videoN` empty) and the camera LED is off |
-| H11 | Restore after H10                     | Preview resumes within 1.5 s with the same mode and settings                          |
-| H12 | Minimize while recording              | Recording and audio continue uninterrupted; stream stops only after recording stops   |
+| H11 | Restore after H10                     | Preview resumes within 1.5 s with the same mode and settings                                 |
+| H12 | Minimize while recording              | Recording and audio continue uninterrupted; stream stops only after recording stops          |
 
 Test aid: simulate unplug without touching the cable with
 `echo 0 | sudo tee /sys/bus/usb/devices/<dev>/authorized` (and `1` to replug).
@@ -414,18 +413,18 @@ Tauri bundler.
 
 ## 13. Decisions
 
-| Date | Decision |
-|---|---|
-| 2026-10-21 | Default video quality: **Original** (MJPEG passthrough, `.mkv`). Compact (AV1) is opt-in. |
-| 2026-10-21 | Photos → XDG Pictures, videos → XDG Videos; each folder configurable (§5.3). |
-| 2026-10-21 | Stop streaming and release the camera when the window is minimized/hidden, except while recording (§6.5). |
-| 2026-10-21 | No Flatpak/Snap/AppImage and no crates.io publishing for v1; `.rpm`/`.deb` + source builds (§3.1). |
-| 2026-10-21 | The privacy LED is never touched by the app (§2). |
-| 2026-10-21 | M0: preview stays on the `ipc::Channel` (raw bytes, frontend acks each frame, at most 2 in flight). 1080p30/60 and 4K30 deliver every frame with none skipped; no HTTP fallback needed. |
-| 2026-10-21 | M0: **never use `vajpegdec`.** On the Radeon 890M it hangs the GPU's JPEG ring ("context is lost … guilty of a hard recovery") on the BRIO's 4:2:2 MJPEG. Preview transcode and Compact recording decode with `jpegdec`. `vaav1enc` (NV12 input) is fine. |
-| 2026-10-21 | M0: FOV takes effect live while streaming (no restart, fps unchanged), so FOV stays unlocked while recording. |
-| 2026-10-21 | M0: on unplug `v4l2src` posts `Could not read from resource` within ms of the udev event, and `set_state(Null)` returns promptly. The recording is finalized by pushing EOS into the record branch (534 s 4K file finalized 25 ms after unplug). |
+| Date       | Decision                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-21 | Default video quality: **Original** (MJPEG passthrough, `.mkv`). Compact (AV1) is opt-in.                                                                                                                                                                                                                                                            |
+| 2026-10-21 | Photos → XDG Pictures, videos → XDG Videos; each folder configurable (§5.3).                                                                                                                                                                                                                                                                         |
+| 2026-10-21 | Stop streaming and release the camera when the window is minimized/hidden, except while recording (§6.5).                                                                                                                                                                                                                                            |
+| 2026-10-21 | No Flatpak/Snap/AppImage and no crates.io publishing for v1; `.rpm`/`.deb` + source builds (§3.1).                                                                                                                                                                                                                                                   |
+| 2026-10-21 | The privacy LED is never touched by the app (§2).                                                                                                                                                                                                                                                                                                    |
+| 2026-10-21 | M0: preview stays on the `ipc::Channel` (raw bytes, frontend acks each frame, at most 2 in flight). 1080p30/60 and 4K30 deliver every frame with none skipped; no HTTP fallback needed.                                                                                                                                                              |
+| 2026-10-21 | M0: **never use `vajpegdec`.** On the Radeon 890M it hangs the GPU's JPEG ring ("context is lost … guilty of a hard recovery") on the BRIO's 4:2:2 MJPEG. Preview transcode and Compact recording decode with `jpegdec`. `vaav1enc` (NV12 input) is fine.                                                                                            |
+| 2026-10-21 | M0: FOV takes effect live while streaming (no restart, fps unchanged), so FOV stays unlocked while recording.                                                                                                                                                                                                                                        |
+| 2026-10-21 | M0: on unplug `v4l2src` posts `Could not read from resource` within ms of the udev event, and `set_state(Null)` returns promptly. The recording is finalized by pushing EOS into the record branch (534 s 4K file finalized 25 ms after unplug).                                                                                                     |
 | 2026-10-21 | M0 measured CPU (% of one core, app + all WebKit processes): 1080p30 preview ≈ 33% (**misses** the 25% target; WebKit's JPEG decode is ~25% by itself); 4K30 preview ≈ 97%; 4K30 preview + Original recording ≈ 112% (**misses** the 100% target). An HTTP/`<img>` fallback would not help (same decode). Follow-up: size the preview to the window. |
-| 2026-10-21 | A/V sync (clap test, Compact 1080p): audio trails video by ≈55 ms in the file (target ≤ 33 ms). Not noticeable in Video Player or Cine; deferred. Likely cause: PipeWire buffer timestamps vs. UVC capture timestamps. |
-| 2026-10-22 | Controls stay available while another app streams (Busy) and during a manual pause (stream released, controls kept). Minimize still releases the device completely. |
-| 2026-10-22 | Opening the camera while another app streams asks before changing its picture when settings differ (keep camera's / apply mine), instead of applying saved settings silently. |
+| 2026-10-21 | A/V sync (clap test, Compact 1080p): audio trails video by ≈55 ms in the file (target ≤ 33 ms). Not noticeable in Video Player or Cine; deferred. Likely cause: PipeWire buffer timestamps vs. UVC capture timestamps.                                                                                                                               |
+| 2026-10-22 | Controls stay available while another app streams (Busy) and during a manual pause (stream released, controls kept). Minimize still releases the device completely.                                                                                                                                                                                  |
+| 2026-10-22 | Opening the camera while another app streams asks before changing its picture when settings differ (keep camera's / apply mine), instead of applying saved settings silently.                                                                                                                                                                        |
