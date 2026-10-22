@@ -1,0 +1,55 @@
+name: Release
+
+# Builds .deb/.rpm bundles for a version tag and attaches them to a draft release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Fail fast if the tag doesn't match the version the bundles will carry
+  version:
+    name: Check version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compare tag with Cargo.toml and package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          npm=$(node -p "require('./package.json').version")
+          echo "tag=$tag Cargo.toml=$cargo package.json=$npm"
+          [ "$tag" = "$cargo" ] && [ "$tag" = "$npm" ]
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Release
+    needs: ci
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - name: Build bundles
+        run: npx tauri build --bundles deb,rpm
+      # Draft so it can be reviewed before publishing; re-runs replace the files
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=(target/release/bundle/deb/*.deb target/release/bundle/rpm/*.rpm)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --draft --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+          fi
