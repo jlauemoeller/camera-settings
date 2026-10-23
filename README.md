@@ -1,14 +1,16 @@
 # Camera Settings
 
-Linux desktop app for the Logitech BRIO webcam: live preview, access to the safe set of camera controls exposed over USB, including field of view, stream modes, white balance, etc. The app also allows you to make test video or still captures.
+Linux desktop app for the Logitech BRIO webcam: live preview, access to the safe set of camera controls exposed over USB, including field of view, stream modes, white balance, low-level performance settings, etc. The app also allows you to make test video or still captures.
 
 ## Taking Back Control
 
 After migrating from macOS to Linux I lost control over my Logitech BRIO web camera -- the basic functionality of the camera (recording video and sound) worked fine, but the lack of a first-party app meant I had no easy way to control settings like resolution or field-of-view. I teamed up with Claude to probe and research the capabilities of the camera exposed over USB (see [research/FINDINGS.md](research/FINDINGS.md)) and the exploration made it clear that all the important features are available over public or proprietary USB channels. Once mapped, they can be accessed from an ordinary user-space app. So, I decided to build this app and take back control.
 
-The app was entirely implemented and tested by Claude Opus 5.5 from [SPEC.md](SPEC.md). The spec was synthesized from a short "vision" document that laid out the "product" ideas and main requirements.
+The app was entirely implemented and tested by Claude Opus 5.5 from [SPEC.md](SPEC.md). The spec was synthesized from a short PRD that laid out the "product" ideas and main requirements.
 
 Claude handled all coding, debugging, and testing. I directed the work according to my product vision, performed usability and acceptance testing, and assisted with yanking the physical cable out when we tested that the app could handle these kinds of disruptions.
+
+![Screenshot](doc/screenshot.png)
 
 ## Build
 
