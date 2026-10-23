@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Called by release.yml so tagged builds are tested too
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
